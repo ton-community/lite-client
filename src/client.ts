@@ -1,13 +1,9 @@
-import BN from "bn.js";
-import { Address, Cell, parseAccount, RawCurrencyCollection, RawStorageInfo, RawAccountStorage, parseDict } from "ton";
-import { parseShardStateUnsplit } from "ton/dist/block/parse";
+import { Address, Cell, loadShardStateUnsplit, CurrencyCollection, loadAccount, Account } from "ton-core";
 import { LiteEngine } from "./engines/engine";
 import { parseShards } from "./parser/parseShards";
 import { Functions, liteServer_blockHeader, liteServer_transactionId, liteServer_transactionId3, tonNode_blockIdExt } from "./schema";
-import DataLoader from 'dataloader';
+import DataLoader from "dataloader";
 import { crc16 } from "./utils/crc16";
-
-const ZERO = new BN(0);
 
 //
 // Ops
@@ -172,7 +168,7 @@ export class LiteClient {
         const configProof = Cell.fromBoc(res.configProof)[0];
         const configCell = configProof.refs[0];
         const cs = configCell.beginParse();
-        let shardState = parseShardStateUnsplit(cs);
+        const shardState = loadShardStateUnsplit(cs);
         if (!shardState.extras) {
             throw Error('Invalid response');
         }
@@ -201,22 +197,23 @@ export class LiteClient {
             }
         }, { timeout }));
 
-        let account: {
-            address: Address | null;
-            storageStat: RawStorageInfo;
-            storage: RawAccountStorage;
-        } | null = null
-        let balance: RawCurrencyCollection = { coins: ZERO, extraCurrencies: null };
+        let account: Account | null = null
+        let balance: CurrencyCollection = { coins: 0n };
         let lastTx: { lt: string, hash: Buffer } | null = null;
         if (res.state.length > 0) {
-            account = parseAccount(Cell.fromBoc(res.state)[0].beginParse())!;
-            if (account) {
+            const cs = Cell.fromBoc(res.state)[0].beginParse()
+            if (cs.loadBit()) {
+                account = loadAccount(cs);
                 balance = account.storage.balance;
-                let shardState = parseShardStateUnsplit(Cell.fromBoc(res.proof)[1].refs[0].beginParse());
-                let hashId = new BN(src.hash.toString('hex'), 'hex').toString(10);
-                let pstate = shardState.accounts.get(hashId);
+                let shardState = loadShardStateUnsplit(Cell.fromBoc(res.proof)[1].refs[0].beginParse());
+                let hashId = BigInt('0x' + src.hash.toString('hex'));
+                let pstate = shardState.accounts?.get(hashId);
                 if (pstate) {
-                    lastTx = { hash: pstate.shardAccount.lastTransHash, lt: pstate.shardAccount.lastTransLt.toString(10) };
+                    let hashStr = pstate.shardAccount.lastTransactionHash.toString(16)
+                    if (hashStr.length % 2 !== 0) {
+                        hashStr = '0' + hashStr
+                    }
+                    lastTx = { hash: Buffer.from(hashStr, 'hex'), lt: pstate.shardAccount.lastTransactionLt.toString(10) };
                 }
             }
         }
@@ -257,7 +254,7 @@ export class LiteClient {
             if (!stateCell.isExotic) {
                 throw new Error('Prunned state is not exotic');
             }
-            stateHash = Cell.fromBoc(res.state)[0].bits.buffer.slice(0, 32);
+            stateHash = stateCell.bits.subbuffer(8, 256);
         }
 
         return {

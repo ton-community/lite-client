@@ -2,11 +2,7 @@ import { LiteEngine } from "./engines/engine";
 import { LiteSingleEngine } from "./engines/single";
 import { LiteRoundRobinEngine } from "./engines/roundRobin";
 import { LiteClient } from "./client";
-import { Address, Cell } from "ton";
-import { formatDistance } from "date-fns";
-import { createBackoff } from "teslabot";
-import { inspect } from "util";
-const backoff = createBackoff();
+import { Address, Cell } from "ton-core";
 
 function intToIP(int: number) {
     var part1 = int & 255;
@@ -48,7 +44,7 @@ async function main() {
         console.log('Account state full:', Cell.fromBoc((await client.getAccountState(address, latest.last)).raw)[0].hash().toString('hex'));
         console.log('Account state prunned:', (await client.getAccountStatePrunned(address, latest.last)).stateHash?.toString('hex'));
 
-        await new Promise((resolve, reject) => setTimeout(resolve, 3000));
+        await new Promise((resolve) => setTimeout(resolve, 3000));
     }
 }
 
