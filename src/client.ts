@@ -88,15 +88,15 @@ type BlockLookupUtimeRequest = { shard: string, workchain: number, mode: 'utime'
 
 export class LiteClient {
     readonly engine: LiteEngine;
-    #blockLockup: DataLoader<BlockLookupIDRequest | BlockLookupUtimeRequest, liteServer_blockHeader, string>;
-    #shardsLockup: DataLoader<{ seqno: number, shard: string, workchain: number, rootHash: Buffer, fileHash: Buffer }, AllShardsResponse, string>;
+    #blockLookup: DataLoader<BlockLookupIDRequest | BlockLookupUtimeRequest, liteServer_blockHeader, string>;
+    #shardsLookup: DataLoader<{ seqno: number, shard: string, workchain: number, rootHash: Buffer, fileHash: Buffer }, AllShardsResponse, string>;
     #blockHeader: DataLoader<{ seqno: number, shard: string, workchain: number, rootHash: Buffer, fileHash: Buffer }, liteServer_blockHeader, string>;
 
     constructor(opts: { engine: LiteEngine, batchSize?: number | undefined | null }) {
         this.engine = opts.engine;
         let batchSize = typeof opts.batchSize === 'number' ? opts.batchSize : 100;
 
-        this.#blockLockup = new DataLoader(async (s) => {
+        this.#blockLookup = new DataLoader(async (s) => {
             return await Promise.all(s.map((v) => {
                 if (v.mode === 'utime') {
                     return lookupBlockByUtime(this.engine, v);
@@ -115,7 +115,7 @@ export class LiteClient {
             return await Promise.all(s.map((v) => getBlockHeader(this.engine, v)));
         }, { maxBatchSize: batchSize, cacheKeyFn: (s) => s.workchain + '::' + s.shard + '::' + s.seqno });
 
-        this.#shardsLockup = new DataLoader<{ seqno: number, shard: string, workchain: number, rootHash: Buffer, fileHash: Buffer }, AllShardsResponse, string>(async (s) => {
+        this.#shardsLookup = new DataLoader<{ seqno: number, shard: string, workchain: number, rootHash: Buffer, fileHash: Buffer }, AllShardsResponse, string>(async (s) => {
             return await Promise.all(s.map((v) => getAllShardsInfo(this.engine, v)));
         }, { maxBatchSize: batchSize, cacheKeyFn: (s) => s.workchain + '::' + s.shard + '::' + s.seqno });
     }
@@ -343,11 +343,11 @@ export class LiteClient {
     //
 
     lookupBlockByID = async (block: { seqno: number, shard: string, workchain: number }) => {
-        return await this.#blockLockup.load({ ...block, mode: 'id' });
+        return await this.#blockLookup.load({ ...block, mode: 'id' });
     }
 
     lookupBlockByUtime = async (block: { shard: string, workchain: number, utime: number }) => {
-        return await this.#blockLockup.load({ ...block, mode: 'utime' });
+        return await this.#blockLookup.load({ ...block, mode: 'utime' });
     }
 
     getBlockHeader = async (block: { seqno: number, shard: string, workchain: number, rootHash: Buffer, fileHash: Buffer }) => {
@@ -355,7 +355,7 @@ export class LiteClient {
     }
 
     getAllShardsInfo = async (block: { seqno: number, shard: string, workchain: number, rootHash: Buffer, fileHash: Buffer }) => {
-        return this.#shardsLockup.load(block);
+        return this.#shardsLookup.load(block);
     }
 
     listBlockTransactions = async (block: { seqno: number, shard: string, workchain: number, rootHash: Buffer, fileHash: Buffer }, args?: {
